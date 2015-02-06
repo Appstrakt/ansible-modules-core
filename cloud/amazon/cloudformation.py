@@ -19,7 +19,8 @@ DOCUMENTATION = '''
 module: cloudformation
 short_description: create a AWS CloudFormation stack
 description:
-     - Launches an AWS CloudFormation stack and waits for it complete.
+     - "Launches an AWS CloudFormation stack and waits for it complete. To use this module, one of the following keys is required: C(template)
+            or C(template_url)."
 version_added: "1.1"
 options:
   stack_name:
@@ -57,7 +58,14 @@ options:
   template:
     description:
       - the path of the cloudformation template
-    required: true
+    required: false
+    default: null
+    aliases: []
+  template_url:
+    description:
+      - S3 location of file containing the template body.
+        The URL must point to a template (max size: 307,200 bytes) located in an S3 bucket in the same region as the stack.
+    required: false
     default: null
     aliases: []
   stack_policy:
@@ -105,9 +113,9 @@ EXAMPLES = '''
 tasks:
 - name: launch ansible cloudformation example
   cloudformation:
-    stack_name: "ansible-cloudformation" 
+    stack_name: "ansible-cloudformation"
     state: "present"
-    region: "us-east-1" 
+    region: "us-east-1"
     disable_rollback: true
     template: "files/cloudformation-example.json"
     template_parameters:
@@ -117,6 +125,15 @@ tasks:
       ClusterSize: 3
     tags:
       Stack: "ansible-cloudformation"
+
+# Example with Template in S3
+tasks:
+- name: launch ansible cloudformation example
+  cloudformation:
+    stack_name: "ansible-cloudformation"
+    state: "present"
+    region: "eu-west-1"
+    template_url: "https://s3-eu-west-1.amazonaws.com/my_cloudformation_bucket/cloudformation-example.json"
 '''
 
 import json
@@ -196,7 +213,8 @@ def main():
             stack_name=dict(required=True),
             template_parameters=dict(required=False, type='dict', default={}),
             state=dict(default='present', choices=['present', 'absent']),
-            template=dict(default=None, required=True),
+            template=dict(default=None, required=False),
+            template_url=dict(default=None, required=False),
             stack_policy=dict(default=None, required=False),
             disable_rollback=dict(default=False, type='bool'),
             tags=dict(default=None)
@@ -205,15 +223,27 @@ def main():
 
     module = AnsibleModule(
         argument_spec=argument_spec,
+        required_one_of=[['template', 'template_url']],
+        mutually_exclusive=[['template', 'template_url']]
     )
 
     state = module.params['state']
     stack_name = module.params['stack_name']
-    template_body = open(module.params['template'], 'r').read()
+    if module.params['template'] is not None:
+        template_body = open(module.params['template'], 'r').read()
+    else:
+        template_body = None
+
+    if module.params['template_url'] is not None:
+        template_url = module.params['template_url']
+    else:
+        template_url = None
+
     if module.params['stack_policy'] is not None:
         stack_policy_body = open(module.params['stack_policy'], 'r').read()
     else:
         stack_policy_body = None
+
     disable_rollback = module.params['disable_rollback']
     template_parameters = module.params['template_parameters']
     tags = module.params['tags']
@@ -249,6 +279,7 @@ def main():
         try:
             cfn.create_stack(stack_name, parameters=template_parameters_tup,
                              template_body=template_body,
+                             template_url=template_url,
                              stack_policy_body=stack_policy_body,
                              disable_rollback=disable_rollback,
                              capabilities=['CAPABILITY_IAM'],
@@ -270,6 +301,7 @@ def main():
         try:
             cfn.update_stack(stack_name, parameters=template_parameters_tup,
                              template_body=template_body,
+                             template_url=module.params['template_url'],
                              stack_policy_body=stack_policy_body,
                              disable_rollback=disable_rollback,
                              capabilities=['CAPABILITY_IAM'])
