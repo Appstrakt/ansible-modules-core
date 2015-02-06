@@ -301,7 +301,7 @@ def main():
         try:
             cfn.update_stack(stack_name, parameters=template_parameters_tup,
                              template_body=template_body,
-                             template_url=module.params['template_url'],
+                             template_url=template_url,
                              stack_policy_body=stack_policy_body,
                              disable_rollback=disable_rollback,
                              capabilities=['CAPABILITY_IAM'])
